@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Mic Monitor
+Comment=Toggle microphone passthrough for karaoke
+Icon=audio-input-microphone
+Exec=/home/aneaire/.local/bin/mic-monitor
+Terminal=false
+Type=Application
+Categories=Audio;
+Keywords=mic;microphone;karaoke;voice;
