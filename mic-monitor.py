@@ -4,47 +4,64 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 import subprocess
 
-loopback_pid = None
-volume = 2.0  # default boost (200%)
+module_id = None
+SOURCE = "alsa_input.usb-MaiYueTech_K18_202505241106-00.analog-stereo"
+SINK = "alsa_output.pci-0000_06_00.6.analog-stereo"
+
+def load_loopback(volume):
+    result = subprocess.run(
+        ['pactl', 'load-module', 'module-loopback',
+         f'source={SOURCE}',
+         f'sink={SINK}',
+         'latency_msec=50',
+         'source_dont_move=true',
+         'sink_dont_move=true'],
+        capture_output=True, text=True
+    )
+    mod_id = result.stdout.strip()
+    if mod_id:
+        set_loopback_volume(mod_id, volume)
+    return mod_id or None
+
+def set_loopback_volume(mod_id, volume):
+    result = subprocess.run(
+        ['pactl', 'list', 'sink-inputs', 'short'],
+        capture_output=True, text=True
+    )
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if parts:
+            sink_input_id = parts[0]
+            subprocess.run(
+                ['pactl', 'set-sink-input-volume', sink_input_id, f'{int(volume * 100)}%'],
+                capture_output=True
+            )
 
 def toggle_mic(button):
-    global loopback_pid
-    if loopback_pid is None:
-        proc = subprocess.Popen(
-            ['pw-loopback', '-m', '[ FL FR ]',
-             '--capture-props=media.class=Audio/Source',
-             f'--playback-props=node.volume={volume}'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        loopback_pid = proc.pid
-        button.set_label("🎤 Mic ON")
-        button.get_style_context().add_class("on")
-        button.get_style_context().remove_class("off")
+    global module_id
+    if module_id is None:
+        volume = slider.get_value()
+        module_id = load_loopback(volume)
+        if module_id:
+            button.set_label("🎤 Mic ON")
+            button.get_style_context().add_class("on")
+            button.get_style_context().remove_class("off")
     else:
-        subprocess.run(['kill', str(loopback_pid)])
-        loopback_pid = None
+        subprocess.run(['pactl', 'unload-module', module_id])
+        module_id = None
         button.set_label("🎤 Mic OFF")
         button.get_style_context().add_class("off")
         button.get_style_context().remove_class("on")
 
-def on_volume_change(slider):
-    global volume, loopback_pid
-    volume = slider.get_value()
-    if loopback_pid:
-        subprocess.run(['kill', str(loopback_pid)])
-        loopback_pid = None
-        proc = subprocess.Popen(
-            ['pw-loopback', '-m', '[ FL FR ]',
-             '--capture-props=media.class=Audio/Source',
-             f'--playback-props=node.volume={volume}'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        loopback_pid = proc.pid
+def on_volume_change(s):
+    global module_id
+    if module_id:
+        set_loopback_volume(module_id, s.get_value())
 
 def on_destroy(win):
-    global loopback_pid
-    if loopback_pid:
-        subprocess.run(['kill', str(loopback_pid)])
+    global module_id
+    if module_id:
+        subprocess.run(['pactl', 'unload-module', module_id])
     Gtk.main_quit()
 
 css = b"""
@@ -66,9 +83,6 @@ button.off {
 }
 window {
     background: #1a1a2e;
-}
-scale trough {
-    background: #333;
 }
 """
 
@@ -96,10 +110,10 @@ btn = Gtk.Button(label="🎤 Mic OFF")
 btn.get_style_context().add_class("off")
 btn.connect("clicked", toggle_mic)
 
-slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.5, 5.0, 0.5)
-slider.set_value(volume)
+slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 50, 200, 10)
+slider.set_value(100)
 slider.set_draw_value(False)
-slider.set_tooltip_text("Volume boost")
+slider.set_tooltip_text("Volume")
 slider.connect("value-changed", on_volume_change)
 
 box.pack_start(btn, True, True, 0)
