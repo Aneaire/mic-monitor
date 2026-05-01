@@ -8,6 +8,16 @@ module_id = None
 SOURCE = "alsa_input.usb-MaiYueTech_K18_202505241106-00.analog-stereo"
 SINK = "alsa_output.pci-0000_06_00.6.analog-stereo"
 
+# Clean up any leftover loopback modules on startup
+def cleanup_existing_loopbacks():
+    result = subprocess.run(['pactl', 'list', 'modules', 'short'], capture_output=True, text=True)
+    for line in result.stdout.splitlines():
+        if 'module-loopback' in line:
+            mod_id = line.split()[0]
+            subprocess.run(['pactl', 'unload-module', mod_id])
+
+cleanup_existing_loopbacks()
+
 def load_loopback(volume):
     result = subprocess.run(
         ['pactl', 'load-module', 'module-loopback',
